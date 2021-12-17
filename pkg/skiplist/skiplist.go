@@ -224,24 +224,21 @@ func (zsl *SkipList) UpdateScore(curScore float64, value interface{}, newScore f
 	return true
 }
 
-func (zsl *SkipList) GetRange(minScore, maxScore float64) []types.ScoreValue {
-	if minScore > maxScore {
+func (zsl *SkipList) GetRange(r types.Range) []types.ScoreValue {
+	if !r.IsValid() {
 		return nil
 	}
 
 	x := zsl.header
 	for i := zsl.level - 1; i >= 0; i-- {
-		for x.level[i].forward != nil && x.level[i].forward.score < minScore {
+		for x.level[i].forward != nil && !r.GteMin(x.level[i].forward.score) {
 			x = x.level[i].forward
 		}
 	}
 
-	x = x.level[0].forward
 	items := make([]types.ScoreValue, 0)
-	for x != nil {
-		if x.score > maxScore {
-			break
-		}
+	x = x.level[0].forward
+	for x != nil && r.LteMax(x.score) {
 		items = append(items, types.ScoreValue{
 			Score: x.score,
 			Value: x.value,
@@ -250,4 +247,106 @@ func (zsl *SkipList) GetRange(minScore, maxScore float64) []types.ScoreValue {
 	}
 
 	return items
+}
+
+type DeleteCallback func(sv *types.ScoreValue)
+
+func (zsl *SkipList) DeleteRange(r types.Range, dc DeleteCallback) int {
+	var update [maxLevel]*node
+
+	x := zsl.header
+	for i := zsl.level - 1; i >= 0; i-- {
+		for x.level[i].forward != nil && !r.GteMin(x.level[i].forward.score) {
+			x = x.level[i].forward
+		}
+		update[i] = x
+	}
+
+	var deleted int
+	x = x.level[0].forward
+	for x != nil && r.LteMax(x.score) {
+		next := x.level[0].forward
+		zsl.deleteNode(x, update)
+		if dc != nil {
+			dc(&types.ScoreValue{
+				Score: x.score,
+				Value: x.value,
+			})
+		}
+		deleted++
+		x = next
+	}
+	return deleted
+}
+
+func (zsl *SkipList) GetRank(score float64, value interface{}) int {
+	x := zsl.header
+	var rank int
+
+	for i := zsl.level - 1; i >= 0; i-- {
+		for x.level[i].forward != nil &&
+			(x.level[i].forward.score < score ||
+				(x.level[i].forward.score == score &&
+					types.Compare(x.level[i].forward.value, value) <= 0)) {
+			rank += x.level[i].span
+			x = x.level[i].forward
+		}
+		if x.value != nil && x.score == score &&
+			types.Compare(x.value, value) == 0 {
+			return rank
+		}
+	}
+	return 0
+}
+
+func (zsl *SkipList) GetByRank(rank int) *types.ScoreValue {
+	x := zsl.header
+	var traversed int
+
+	for i := zsl.level - 1; i >= 0; i-- {
+		for x.level[i].forward != nil &&
+			(traversed+x.level[i].span) <= rank {
+			traversed += x.level[i].span
+			x = x.level[i].forward
+		}
+		if traversed == rank {
+			return &types.ScoreValue{
+				Score: x.score,
+				Value: x.value,
+			}
+		}
+	}
+	return nil
+}
+
+func (zsl *SkipList) DeleteRangeByRank(start, end int, dc DeleteCallback) int {
+	var update [maxLevel]*node
+	var traversed, deleted int
+
+	x := zsl.header
+	for i := zsl.level - 1; i >= 0; i-- {
+		for x.level[i].forward != nil &&
+			(traversed+x.level[i].span) < start {
+			traversed += x.level[i].span
+			x = x.level[i].forward
+		}
+		update[i] = x
+	}
+
+	traversed++
+	x = x.level[0].forward
+	for x != nil && traversed <= end {
+		next := x.level[0].forward
+		if dc != nil {
+			dc(&types.ScoreValue{
+				Score: x.score,
+				Value: x.value,
+			})
+		}
+		zsl.deleteNode(x, update)
+		deleted++
+		traversed++
+		x = next
+	}
+	return deleted
 }

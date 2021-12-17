@@ -296,7 +296,7 @@ func TestUpdate(t *testing.T) {
 	}
 }
 
-func TestGetByScoreRange(t *testing.T) {
+func TestRange(t *testing.T) {
 	zsl := New()
 	zsl.Insert(0.1, "a")
 	zsl.Insert(0.2, "b")
@@ -305,26 +305,16 @@ func TestGetByScoreRange(t *testing.T) {
 	zsl.Insert(0.5, "e")
 
 	cases := []struct {
-		min, max float64
+		r types.Range
 
 		zsl *SkipList
 
 		results []string
 	}{
 		{
-			min: 0.2, max: 0.1,
-			zsl: zsl,
-
-			results: []string{},
-		},
-		{
-			min: 0.1, max: 0.9,
-			zsl: New(),
-
-			results: []string{},
-		},
-		{
-			min: 0.0, max: 0.9,
+			r: types.Range{
+				Min: 0.1, Max: 0.5,
+			},
 			zsl: zsl,
 
 			results: []string{
@@ -333,69 +323,262 @@ func TestGetByScoreRange(t *testing.T) {
 			},
 		},
 		{
-			min: 0.1, max: 0.9,
+			r: types.Range{
+				Min: 0.1, Max: 0.5,
+				Minex: true,
+			},
 			zsl: zsl,
 
 			results: []string{
-				"0.1: a", "0.2: b", "0.3: c",
+				"0.2: b", "0.3: c",
 				"0.4: d", "0.5: e",
 			},
 		},
 		{
-			min: 0.0, max: 0.5,
+			r: types.Range{
+				Min: 0.1, Max: 0.5,
+				Maxex: true,
+			},
 			zsl: zsl,
 
 			results: []string{
-				"0.1: a", "0.2: b", "0.3: c",
+				"0.1: a", "0.2: b", "0.3: c", "0.4: d",
+			},
+		},
+		{
+			r: types.Range{
+				Min: 0.1, Max: 0.5,
+				Minex: true,
+				Maxex: true,
+			},
+			zsl: zsl,
+
+			results: []string{
+				"0.2: b", "0.3: c", "0.4: d",
+			},
+		},
+		{
+			r: types.Range{
+				Min: 0.2, Max: 0.5,
+			},
+			zsl: zsl,
+
+			results: []string{
+				"0.2: b", "0.3: c",
 				"0.4: d", "0.5: e",
 			},
 		},
 		{
-			min: 0.1, max: 0.5,
-			zsl: zsl,
-
-			results: []string{
-				"0.1: a", "0.2: b", "0.3: c",
-				"0.4: d", "0.5: e",
+			r: types.Range{
+				Min: 0.15, Max: 0.35,
 			},
-		},
-		{
-			min: 0.1, max: 0.3,
-			zsl: zsl,
-
-			results: []string{
-				"0.1: a", "0.2: b", "0.3: c",
-			},
-		},
-		{
-			min: 0.1, max: 0.35,
-			zsl: zsl,
-
-			results: []string{
-				"0.1: a", "0.2: b", "0.3: c",
-			},
-		},
-		{
-			min: 0.15, max: 0.35,
 			zsl: zsl,
 
 			results: []string{
 				"0.2: b", "0.3: c",
 			},
 		},
+	}
+
+	for _, c := range cases {
+		items := c.zsl.GetRange(c.r)
+		strs := items2strs(items)
+		if !reflect.DeepEqual(strs, c.results) {
+			t.Fatalf("Expect: %v, get: %v", c.results, strs)
+		}
+	}
+}
+
+func TestDeleteRange(t *testing.T) {
+	cases := []struct {
+		data []types.ScoreValue
+		r    types.Range
+
+		deleted int
+		results []string
+	}{
 		{
-			min: 0.15, max: 0.17,
-			zsl: zsl,
+			data: []types.ScoreValue{
+				{Score: 0.4, Value: "d"},
+				{Score: 0.2, Value: "b"},
+				{Score: 0.3, Value: "c"},
+				{Score: 0.5, Value: "e"},
+				{Score: 0.1, Value: "a"},
+			},
+
+			r: types.Range{
+				Min: 0.25, Max: 0.4,
+			},
+
+			deleted: 2,
+
+			results: []string{
+				"0.1: a", "0.2: b", "0.5: e",
+			},
+		},
+		{
+			data: []types.ScoreValue{
+				{Score: 0.3, Value: "c"},
+				{Score: 0.4, Value: "d"},
+				{Score: 0.2, Value: "b"},
+				{Score: 0.1, Value: "a"},
+				{Score: 0.5, Value: "e"},
+			},
+
+			r: types.Range{
+				Min: 0.25, Max: 0.4,
+				Maxex: true,
+			},
+
+			deleted: 1,
+
+			results: []string{
+				"0.1: a", "0.2: b", "0.4: d", "0.5: e",
+			},
+		},
+		{
+			data: []types.ScoreValue{
+				{Score: 0.3, Value: "c"},
+				{Score: 0.4, Value: "d"},
+				{Score: 0.2, Value: "b"},
+				{Score: 0.1, Value: "a"},
+				{Score: 0.5, Value: "e"},
+			},
+
+			r: types.Range{
+				Min: 0.3, Max: 0.5,
+				Minex: true,
+			},
+
+			deleted: 2,
+
+			results: []string{
+				"0.1: a", "0.2: b", "0.3: c",
+			},
+		},
+		{
+			data: []types.ScoreValue{
+				{Score: 0.3, Value: "c"},
+				{Score: 0.4, Value: "d"},
+				{Score: 0.2, Value: "b"},
+				{Score: 0.1, Value: "a"},
+				{Score: 0.5, Value: "e"},
+			},
+
+			r: types.Range{
+				Min: 0.1, Max: 0.5,
+				Minex: true,
+				Maxex: true,
+			},
+
+			deleted: 3,
+
+			results: []string{
+				"0.1: a", "0.5: e",
+			},
+		},
+		{
+			data: []types.ScoreValue{
+				{Score: 0.3, Value: "c"},
+				{Score: 0.4, Value: "d"},
+				{Score: 0.2, Value: "b"},
+				{Score: 0.1, Value: "a"},
+				{Score: 0.5, Value: "e"},
+			},
+
+			r: types.Range{
+				Min: 0.1, Max: 0.5,
+			},
+
+			deleted: 5,
 
 			results: []string{},
 		},
-		{
-			min: 0.09, max: 0.1,
-			zsl: zsl,
+	}
 
-			results: []string{"0.1: a"},
+	for _, c := range cases {
+		zsl := New()
+		for _, item := range c.data {
+			zsl.Insert(item.Score, item.Value)
+		}
+		deleted := zsl.DeleteRange(c.r, nil)
+		if deleted != c.deleted {
+			t.Fatalf("Unexpect deleted: %d, expect: %d",
+				deleted, c.deleted)
+		}
+		strs := items2strs(zsl.ToSlice(false))
+		if !reflect.DeepEqual(strs, c.results) {
+			t.Fatalf("Expect: %v, get: %v", c.results, strs)
+		}
+	}
+}
+
+func TestOperations(t *testing.T) {
+	type op struct {
+		op func(zsl *SkipList)
+
+		result []string
+	}
+
+	cases := []struct {
+		data []types.ScoreValue
+
+		ops []op
+	}{
+		{
+			data: []types.ScoreValue{
+				{Score: 0.1, Value: "a"},
+				{Score: 0.2, Value: "b"},
+				{Score: 0.3, Value: "c"},
+			},
+
+			ops: []op{
+				{
+					op: func(zsl *SkipList) {
+						zsl.UpdateScore(0.1, "a", 0.5)
+						zsl.Delete(0.2, "b")
+					},
+					result: []string{
+						"0.3: c", "0.5: a",
+					},
+				},
+				{
+					op: func(zsl *SkipList) {
+						zsl.Insert(-0.1, "insert1")
+						zsl.Insert(0.0, "insert2")
+						zsl.DeleteRange(types.Range{
+							Min: 0.1,
+							Max: 100,
+						}, nil)
+					},
+					result: []string{
+						"-0.1: insert1", "0.0: insert2",
+					},
+				},
+				{
+					op: func(zsl *SkipList) {
+						zsl.UpdateScore(-0.1, "insert1", 0.1)
+						zsl.UpdateScore(0.0, "insert2", 0.2)
+						zsl.Delete(0.1, "insert1")
+					},
+					result: []string{"0.2: insert2"},
+				},
+			},
 		},
 	}
-	cases = cases
 
+	for _, c := range cases {
+		zsl := New()
+		for _, item := range c.data {
+			zsl.Insert(item.Score, item.Value)
+		}
+		for _, op := range c.ops {
+			op.op(zsl)
+			slice := zsl.ToSlice(false)
+			strs := items2strs(slice)
+			if !reflect.DeepEqual(strs, op.result) {
+				t.Fatalf("Expect: %v, get: %v", op.result, strs)
+			}
+		}
+	}
 }

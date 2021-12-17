@@ -45,6 +45,10 @@ func (set *SortedSet) Get(key string) (float64, bool) {
 	return score, ok
 }
 
+func (set *SortedSet) GetRange(r types.Range) []types.ScoreKey {
+	return types.ScoreValue2Key(set.zsl.GetRange(r))
+}
+
 func (set *SortedSet) Delete(key string) bool {
 	score, ok := set.dict[key]
 	if !ok {
@@ -53,4 +57,10 @@ func (set *SortedSet) Delete(key string) bool {
 	delete(set.dict, key)
 	set.zsl.Delete(score, key)
 	return true
+}
+
+func (set *SortedSet) DeleteRange(r types.Range) int {
+	return set.zsl.DeleteRange(r, func(sv *types.ScoreValue) {
+		delete(set.dict, sv.Value.(string))
+	})
 }
