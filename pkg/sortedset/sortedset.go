@@ -17,7 +17,7 @@ func New(length int) *SortedSet {
 	}
 }
 
-func (set *SortedSet) Set(key string, score float64) bool {
+func (set *SortedSet) Set(score float64, key string) bool {
 	curScore, ok := set.dict[key]
 	if ok && curScore == score {
 		return false
@@ -30,6 +30,20 @@ func (set *SortedSet) Set(key string, score float64) bool {
 
 	set.zsl.UpdateScore(curScore, key, score)
 	return true
+}
+
+type ScanFunc func(score float64, key string) bool
+
+func (set *SortedSet) Scan(f ScanFunc) {
+	set.zsl.Scan(false, func(score float64, value interface{}) bool {
+		return f(score, value.(string))
+	})
+}
+
+func (set *SortedSet) ScanDesc(f ScanFunc) {
+	set.zsl.Scan(true, func(score float64, value interface{}) bool {
+		return f(score, value.(string))
+	})
 }
 
 func (set *SortedSet) Slice() []types.ScoreKey {
@@ -49,6 +63,12 @@ func (set *SortedSet) GetRange(r types.Range) []types.ScoreKey {
 	return types.ScoreValue2Key(set.zsl.GetRange(r))
 }
 
+func (set *SortedSet) ScanRange(r types.Range, f ScanFunc) {
+	set.zsl.ScanRange(r, func(score float64, value interface{}) bool {
+		return f(score, value.(string))
+	})
+}
+
 func (set *SortedSet) Delete(key string) bool {
 	score, ok := set.dict[key]
 	if !ok {
@@ -60,7 +80,7 @@ func (set *SortedSet) Delete(key string) bool {
 }
 
 func (set *SortedSet) DeleteRange(r types.Range) int {
-	return set.zsl.DeleteRange(r, func(sv *types.ScoreValue) {
-		delete(set.dict, sv.Value.(string))
+	return set.zsl.DeleteRange(r, func(score float64, value interface{}) {
+		delete(set.dict, value.(string))
 	})
 }
